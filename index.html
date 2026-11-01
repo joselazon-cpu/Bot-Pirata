@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calculadora</title>
+  <style>
+    :root {
+      --bg: #f2f3f5; --panel: #ffffff; --text: #1d1f23; --muted: #6b7280;
+      --key: #eceef1; --key-hover: #e0e3e8; --fn: #d9dde3; --op: #e8590c; --op-text: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111316; --panel: #1b1e23; --text: #f1f3f5; --muted: #9aa1ab;
+        --key: #2a2e35; --key-hover: #343941; --fn: #3a3f47; --op: #f76707; --op-text: #fff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+    }
+    .calc {
+      width: 100%; max-width: 340px; background: var(--panel);
+      border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.12);
+    }
+    .pantalla { text-align: right; padding: 8px 4px 16px; min-height: 96px; }
+    .expr { color: var(--muted); font-size: 1rem; min-height: 1.4em; word-break: break-all; }
+    .valor { font-size: 2.6rem; font-weight: 600; word-break: break-all; line-height: 1.2; }
+    .valor.error { color: #e03131; font-size: 1.4rem; }
+    .teclas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    button {
+      font: inherit; font-size: 1.35rem; border: 0; border-radius: 14px;
+      height: 62px; cursor: pointer; background: var(--key); color: var(--text);
+      transition: background .1s, transform .05s;
+    }
+    button:hover { background: var(--key-hover); }
+    button:active { transform: scale(.96); }
+    button:focus-visible { outline: 2px solid var(--op); outline-offset: 2px; }
+    .fn { background: var(--fn); }
+    .op { background: var(--op); color: var(--op-text); }
+    .op:hover { filter: brightness(1.08); background: var(--op); }
+  </style>
+</head>
+<body>
+  <main class="calc" aria-label="Calculadora">
+    <div class="pantalla" aria-live="polite">
+      <div class="expr" id="expr"></div>
+      <div class="valor" id="valor">0</div>
+    </div>
+    <div class="teclas">
+      <button class="fn" data-accion="limpiar">AC</button>
+      <button class="fn" data-accion="borrar" aria-label="Borrar">⌫</button>
+      <button class="fn" data-valor="%">%</button>
+      <button class="op" data-valor="/" aria-label="Dividir">÷</button>
+      <button data-valor="7">7</button><button data-valor="8">8</button><button data-valor="9">9</button>
+      <button class="op" data-valor="*" aria-label="Multiplicar">×</button>
+      <button data-valor="4">4</button><button data-valor="5">5</button><button data-valor="6">6</button>
+      <button class="op" data-valor="-" aria-label="Restar">−</button>
+      <button data-valor="1">1</button><button data-valor="2">2</button><button data-valor="3">3</button>
+      <button class="op" data-valor="+" aria-label="Sumar">+</button>
+      <button class="fn" data-accion="signo" aria-label="Cambiar signo">±</button>
+      <button data-valor="0">0</button>
+      <button data-valor=".">,</button>
+      <button class="op" data-accion="igual">=</button>
+    </div>
+  </main>
+
+  <script src="calculadora.js"></script>
+  <script>
+    (function () {
+      const exprEl = document.getElementById('expr');
+      const valorEl = document.getElementById('valor');
+      const SIMBOLOS = { '*': '×', '/': '÷', '-': '−', '.': ',' };
+      let entrada = '';        // expresión que el usuario va escribiendo
+      let recienCalculado = false;
+
+      const bonito = (s) => s.replace(/[*/\-.]/g, (c) => SIMBOLOS[c]);
+      const formatear = (n) => n.toLocaleString('es-ES', { maximumFractionDigits: 10 });
+
+      function mostrar(error) {
+        valorEl.classList.toggle('error', !!error);
+        if (error) { valorEl.textContent = error; return; }
+        valorEl.textContent = entrada ? bonito(entrada) : '0';
+      }
+
+      function agregar(v) {
+        const esOperador = '+-*/'.includes(v);
+        if (recienCalculado) {
+          // Tras "=", un número empieza de cero; un operador continúa con el resultado.
+          if (!esOperador && v !== '%') entrada = '';
+          exprEl.textContent = '';
+          recienCalculado = false;
+        }
+        const ultimo = entrada.slice(-1);
+        if (esOperador && '+*/'.includes(v) && ('+-*/'.includes(ultimo) || entrada === '')) {
+          if (entrada === '') return;
+          entrada = entrada.slice(0, -1);         // reemplaza el operador anterior
+        }
+        if (v === '.') {
+          const numActual = entrada.split(/[+\-*/%()]/).pop();
+          if (numActual.includes('.')) return;
+          if (numActual === '') entrada += '0';
+        }
+        entrada += v;
+        mostrar();
+      }
+
+      function igual() {
+        if (!entrada) return;
+        try {
+          const r = Calculadora.evaluar(entrada);
+          exprEl.textContent = bonito(entrada) + ' =';
+          valorEl.classList.remove('error');
+          valorEl.textContent = formatear(r);
+          entrada = String(r);
+          recienCalculado = true;
+        } catch (e) {
+          mostrar(e.message);
+        }
+      }
+
+      function cambiarSigno() {
+        const m = entrada.match(/(^|[+\-*/(])(-?)(\d*\.?\d*%?)$/);
+        if (!m || m[3] === '') return;
+        const inicio = entrada.length - m[2].length - m[3].length;
+        // Si el "-" es en realidad un operador de resta (p. ej. "5-3"), no es un signo.
+        const esSigno = m[2] === '-' && (inicio === 0 || '+-*/('.includes(entrada[inicio - 1]));
+        entrada = entrada.slice(0, inicio) + (esSigno ? '' : '-') + m[3];
+        recienCalculado = false;
+        mostrar();
+      }
+
+      const acciones = {
+        limpiar() { entrada = ''; exprEl.textContent = ''; recienCalculado = false; mostrar(); },
+        borrar() { if (recienCalculado) return acciones.limpiar(); entrada = entrada.slice(0, -1); mostrar(); },
+        signo: cambiarSigno,
+        igual,
+      };
+
+      document.querySelector('.teclas').addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.accion) acciones[b.dataset.accion]();
+        else agregar(b.dataset.valor);
+      });
+
+      document.addEventListener('keydown', (e) => {
+        const k = e.key;
+        if (/^[0-9]$/.test(k) || '+-*/%()'.includes(k)) agregar(k);
+        else if (k === '.' || k === ',') agregar('.');
+        else if (k === 'Enter' || k === '=') { e.preventDefault(); igual(); }
+        else if (k === 'Backspace') acciones.borrar();
+        else if (k === 'Escape' || k === 'Delete') acciones.limpiar();
+        else return;
+        e.preventDefault();
+      });
+    })();
+  </script>
+</body>
+</html>
